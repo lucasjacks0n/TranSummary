@@ -1,0 +1,12 @@
+{
+  "name": "videoextractor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "api": "cd packages/api/src && source ../venv/bin/activate && python app.py",
+    "frontend": "cd packages/frontend && npm run start"
+  },
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,23 @@
+services:
+  frontend:
+    build:
+      context: packages/frontend
+    ports:
+      - 3000:3000
+    volumes:
+      - ./packages/frontend/src:/code/src
+      - /code/node_modules
+    networks:
+      - public
+    depends_on:
+      - api
+  api:
+    build:
+      context: packages/api
+    ports:
+      - 4000:4000
+    volumes:
+      - ./packages/api:/code
+
+networks:
+  public:

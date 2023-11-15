@@ -1,0 +1,15 @@
+FROM python:3.9
+
+RUN python3 -m pip install --upgrade pip
+WORKDIR /code
+
+RUN apt update && apt install -y ffmpeg libsm6 libxext6 libxrender-dev gifsicle sox libcairo2 libcairo2-dev git
+# Install Whisper Timestamped
+RUN pip3 install git+https://github.com/linto-ai/whisper-timestamped
+
+RUN pip install --upgrade pip
+RUN pip install jupyter jupyterlab openai yt_dlp flask flask_cors
+COPY . .
+COPY jupyter_notebook_config.py /root/.jupyter/jupyter_notebook_config.py
+
+CMD [ "python", "src/app.py" ]
