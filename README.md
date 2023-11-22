@@ -9,9 +9,9 @@ TranSummary is a web application designed to enhance the accessibility and compr
 - **Video Transcription**: Utilizes Whisper AI for precise transcription with timestamps.
 - **Content Summarization**: Implements OpenAI API to create concise, titled chapters for easy navigation and understanding of the video content.
 
+![screenshot](transummary.jpg)
 
 ## References
 - https://github.com/MahmoudAshraf97/whisper-diarization
 - https://github.com/cppxaxa/FaceRecognitionPipeline_GeeksForGeeks
 
-![screenshot](transummary.jpg)
