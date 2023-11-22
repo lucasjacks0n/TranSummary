@@ -1,18 +1,16 @@
 import yt_dlp
 from collections import defaultdict
 from sklearn.cluster import DBSCAN
-from imutils import build_montages, paths
+from imutils import paths
 import numpy as np
 import os
 import pickle
 import cv2
 import shutil
 import time
-from tqdm import tqdm
+import logging
 import face_recognition
-from PIL import Image
 import re
-
 import logging
 import torch
 from pydub import AudioSegment
@@ -22,6 +20,9 @@ import whisperx
 from nemo.collections.asr.models.msdd_models import NeuralDiarizer
 from deepmultilingualpunctuation import PunctuationModel
 
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def rescale_by_height(image, target_height, method=cv2.INTER_LANCZOS4):
     """Rescale `image` to `target_height` (preserving aspect ratio)."""
@@ -76,7 +77,6 @@ class VideoTranscriber:
 
     def download_audio(self):
         if os.path.exists(self.audio_path):
-            print("file exists")
             return
         ydl_opts = {
             "format": "bestaudio/best",
@@ -218,7 +218,6 @@ class FaceExtractor:
 
     def download_video(self):
         if os.path.exists(self.video_path):
-            print("file exists")
             return
         ydl_opts = {
             "format": "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360][ext=mp4]",
@@ -241,8 +240,8 @@ class FaceExtractor:
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     
-        print("[INFO] Total Frames ", total_frames, " @ ", fps, " fps")
-        print("[INFO] Calculating number of frames per second")
+        logger.info(f"Total Frames {total_frames} @ {fps} fps")
+        logger.info("Calculating number of frames per second")
     
         if os.path.exists(self.frames_dir):
             shutil.rmtree(self.frames_dir)
@@ -255,16 +254,15 @@ class FaceExtractor:
             if not success:
                 break
             if frame_count % int(fps * self.save_fps) == 0:
-                print('got frame',frame_count)
+                logger.info(f'Saving frame number {frame_count}')
                 frame = auto_resize(frame)
                 filename = "frame_" + str(frame_count) + ".jpg"
                 cv2.imwrite(os.path.join(self.frames_dir, filename), frame)
             frame_count += 1
-    
-        print('[INFO] Frames extracted')
+        logger.info('Frames extracted')
 
     def extract_encodings(self):
-        print("Extract Encodings")
+        logger.info("Extract Encodings")
         data = []
         for id, image_path in enumerate(paths.list_images(self.frames_dir)):
             image = cv2.imread(image_path)
@@ -273,12 +271,11 @@ class FaceExtractor:
             encodings = face_recognition.face_encodings(rgb, boxes)
             d = [{"image_path": image_path, "loc": box, "encoding": enc} 
                     for (box, enc) in zip(boxes, encodings)]
-    
             data.append({'id': id, 'encodings': d})
-            print('extract', id)
+            logger.info('Extract', id)
         self.encodings_to_pkl(data)
         self.generate_main_encodings_pkl()
-        print("DONE")
+        logger.info("DONE")
 
     def encodings_to_pkl(self, data):
         for d in data:
@@ -303,7 +300,6 @@ class FaceExtractor:
     
         with open(self.encodings_pkl_path, 'wb') as f:
             f.write(pickle.dumps(datastore))
-            print('wrote main pickle', self.encodings_pkl_path)
 
     def crop_image(self, loc, image):
         (o_top, o_right, o_bottom, o_left) = loc
@@ -336,28 +332,27 @@ class FaceExtractor:
         # load the serialized face encodings + bounding box locations from
         # disk, then extract the set of encodings to so we can cluster on
         # them
-        print("[INFO] Loading encodings")
+        logger.info("Loading encodings")
         data = pickle.loads(open(self.encodings_pkl_path, "rb").read())
         data = np.array(data)
         
         encodings = [d["encoding"] for d in data]
         
         # cluster the embeddings
-        print("[INFO] Clustering")
+        logger.info("Clustering")
         clt = DBSCAN(eps=0.5, metric="euclidean", n_jobs=1)
         clt.fit(encodings)
-        print("DONE")
+        logger.info("DONE")
         
         # determine the total number of unique faces found in the dataset
         labels = clt.labels_
         label_ids = np.unique(labels)
         unique_faces_count = len(np.where(label_ids > -1)[0])
-        print("[INFO] # unique faces: {}".format(unique_faces_count))
+        logger.info(f"# unique faces: {unique_faces_count}")
 
         result = defaultdict(lambda:[])
         for label in range(unique_faces_count):
             ids = np.where(labels == label)[0]
-            print("Person", label, "photos", len(ids))
             for id in ids[:10]:
                 image = cv2.imread(data[id]["image_path"])
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
