@@ -4,9 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "api": "cd packages/api/src && source ../venv/bin/activate && python app.py",
+    "dev": "concurrently --kill-others \"npm run frontend\" \"npm run api\"",
+    "api": "cd packages/api/src && python app.py",
     "frontend": "cd packages/frontend && npm run start"
   },
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
 }

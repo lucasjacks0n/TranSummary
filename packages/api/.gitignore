@@ -1,3 +1,6 @@
 venv
 llama
 .env
+src/cache
+src/videos
+src/nemo_msdd_configs
