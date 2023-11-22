@@ -13,6 +13,14 @@ import face_recognition
 from PIL import Image
 import re
 
+import logging
+import torch
+from pydub import AudioSegment
+from helpers import *
+from faster_whisper import WhisperModel
+import whisperx
+from nemo.collections.asr.models.msdd_models import NeuralDiarizer
+from deepmultilingualpunctuation import PunctuationModel
 
 
 def rescale_by_height(image, target_height, method=cv2.INTER_LANCZOS4):
@@ -39,8 +47,159 @@ def auto_resize(frame):
     
     return frame
 
-class VideoProcessor:
-    def __init__(self, url):
+
+class VideoTranscriber:
+    def __init__(self, url, model_name="medium.en", audio_file="audio.mp3"):
+        ROOT = os.getcwd()
+        self.temp_path = os.path.join(ROOT, "temp_outputs")
+        self.video_id = self._get_videoid(url)
+        self.video_dir = os.path.join("videos", self.video_id)
+        self.audio_path = os.path.join(self.video_dir, audio_file)
+        os.makedirs(self.video_dir, exist_ok=True)
+
+        self.mtypes = {"cpu": "int8", "cuda": "float16"}
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model_name = model_name
+        self.word_timestamps = []
+        self.whisper_results = []
+        self.speaker_ts = []
+        self.wsm = []
+        self.info = None  # Attribute to hold transcription info
+        self.download_audio()
+
+    def _get_videoid(self, url):
+        re_match = re.match(
+            "(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})",
+            url,
+        )
+        return re_match.group(1)
+
+    def download_audio(self):
+        if os.path.exists(self.audio_path):
+            print("file exists")
+            return
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }
+            ],
+            "outtmpl": self.audio_path.split('.')[0],
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([f"https://youtube.com/watch?v={self.video_id}"])
+            
+    def transcribe_audio(self):
+        whisper_model = WhisperModel(
+            self.model_name, device=self.device, compute_type=self.mtypes[self.device]
+        )
+
+        numeral_symbol_tokens = None
+        segments, self.info = whisper_model.transcribe(
+            self.audio_path,
+            beam_size=5,
+            word_timestamps=True,
+            suppress_tokens=numeral_symbol_tokens,
+            vad_filter=True,
+        )
+
+        for segment in segments:
+            self.whisper_results.append(segment._asdict())
+
+        del whisper_model
+        torch.cuda.empty_cache()
+
+        if self.info.language in wav2vec2_langs:
+            alignment_model, metadata = whisperx.load_align_model(
+                language_code=self.info.language, device=self.device
+            )
+            result_aligned = whisperx.align(
+                self.whisper_results, alignment_model, metadata, self.audio_path, self.device
+            )
+            self.word_timestamps = filter_missing_timestamps(result_aligned["word_segments"])
+
+            del alignment_model
+            torch.cuda.empty_cache()
+        else:
+            for segment in self.whisper_results:
+                for word in segment["words"]:
+                    self.word_timestamps.append({"word": word[2], "start": word[0], "end": word[1]})
+
+    def process_audio(self):
+        sound = AudioSegment.from_file(self.audio_path).set_channels(1)
+        
+        os.makedirs(self.temp_path, exist_ok=True)
+        sound.export(os.path.join(self.temp_path, "mono_file.wav"), format="wav")
+
+        msdd_model = NeuralDiarizer(cfg=create_config(self.temp_path)).to(self.device)
+        msdd_model.diarize()
+
+        del msdd_model
+        torch.cuda.empty_cache()
+
+        with open(os.path.join(self.temp_path, "pred_rttms", "mono_file.rttm"), "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                line_list = line.split(" ")
+                s = int(float(line_list[5]) * 1000)
+                e = s + int(float(line_list[8]) * 1000)
+                self.speaker_ts.append([s, e, int(line_list[11].split("_")[-1])])
+
+        self.wsm = get_words_speaker_mapping(self.word_timestamps, self.speaker_ts, "start")
+
+    def add_punctuation(self):
+        if self.info and self.info.language in punct_model_langs:
+            punct_model = PunctuationModel(model="kredor/punctuate-all")
+            words_list = list(map(lambda x: x["word"], self.wsm))
+            labeled_words = punct_model.predict(words_list)
+
+            ending_puncts = ".?!"
+            model_puncts = ".,;:!?"
+            is_acronym = lambda x: re.fullmatch(r"\b(?:[a-zA-Z]\.){2,}", x)
+
+            for word_dict, labeled_tuple in zip(self.wsm, labeled_words):
+                word = word_dict["word"]
+                if (
+                    word
+                    and labeled_tuple[1] in ending_puncts
+                    and (word[-1] not in model_puncts or is_acronym(word))
+                ):
+                    word += labeled_tuple[1]
+                    if word.endswith(".."):
+                        word = word.rstrip(".")
+                    word_dict["word"] = word
+
+            self.wsm = get_realigned_ws_mapping_with_punctuation(self.wsm)
+        else:
+            logging.warning(
+                f"Punctuation restoration is not available for {self.info.language} language."
+            )
+
+    def export_transcripts(self):
+        ssm = get_sentences_speaker_mapping(self.wsm, self.speaker_ts)
+        cleanup(self.temp_path)
+        with open(os.path.join(self.video_dir,f"{self.video_id}.txt"), "w", encoding="utf-8-sig") as f:
+            get_speaker_aware_transcript(ssm, f)
+
+        with open(os.path.join(self.video_dir,f"{self.video_id}.srt"), "w", encoding="utf-8-sig") as srt:
+            write_srt(ssm, srt)
+        return ssm
+
+    def run(self):
+        self.transcribe_audio()
+        self.process_audio()
+        self.add_punctuation()
+        return self.export_transcripts()
+
+
+class FaceExtractor:
+    def __init__(self, url, frame_freq=60, save_fps=1):
+        self.save_fps = save_fps
+        self.frame_freq = frame_freq
         self.video_id = self.get_videoid(url)
         
         self.video_dir = os.path.join("videos", self.video_id)
@@ -75,14 +234,14 @@ class VideoProcessor:
         )
         return re_match.group(1)
     
-    def extract_frames(self, save_freq=60):            
+    def extract_frames(self):            
         cap = cv2.VideoCapture(self.video_path)
         _, frame = cap.read()
     
         fps = cap.get(cv2.CAP_PROP_FPS)
-        TotalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     
-        print("[INFO] Total Frames ", TotalFrames, " @ ", fps, " fps")
+        print("[INFO] Total Frames ", total_frames, " @ ", fps, " fps")
         print("[INFO] Calculating number of frames per second")
     
         if os.path.exists(self.frames_dir):
@@ -91,11 +250,11 @@ class VideoProcessor:
         os.mkdir(self.frames_dir)
     
         frame_count = 1
-        while frame_count < TotalFrames:
+        while frame_count < total_frames:
             success, frame = cap.read()
             if not success:
                 break
-            if frame_count % int(fps) == 0:
+            if frame_count % int(fps * self.save_fps) == 0:
                 print('got frame',frame_count)
                 frame = auto_resize(frame)
                 filename = "frame_" + str(frame_count) + ".jpg"
@@ -205,3 +364,8 @@ class VideoProcessor:
                 image = self.crop_image(data[id]["loc"],image)
                 result[label].append(image)
         return result
+
+    def run(self):
+        self.extract_frames()
+        self.extract_encodings()
+        return self.cluster_images()

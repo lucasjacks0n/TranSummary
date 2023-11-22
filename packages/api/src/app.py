@@ -6,16 +6,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-cors = CORS(app)
+CORS(app)
 
 
 @app.route("/parse-video", methods=["POST"])
 def parse_video():
     data = request.get_json()
     url = data.get("url", "")
-    trans = TranSummary(url=url)
-    segments = trans.summarize_segments()
-    return jsonify({"videoId": trans.yt_id, "segments": segments})
+    summary_data = TranSummary(url)
+    print(type(summary_data))
+    return jsonify(summary_data)
 
 
 @app.route("/")
