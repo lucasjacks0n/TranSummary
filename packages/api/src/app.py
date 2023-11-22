@@ -13,8 +13,8 @@ CORS(app)
 def parse_video():
     data = request.get_json()
     url = data.get("url", "")
-    summary_data = TranSummary(url)
-    print(type(summary_data))
+    ts = TranSummary(url)
+    summary_data = ts.extract_data()
     return jsonify(summary_data)
 
 

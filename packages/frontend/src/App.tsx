@@ -9,23 +9,21 @@ import {
 } from "@mui/material";
 import "./App.css";
 import { parseVideo } from "./services/api";
-import { ISegment } from "./types/segment";
+import { ISummary } from "./types/segment";
 import { formatTimestamp } from "./utils/helpers";
 import YouTube from "react-youtube";
 
 const App = () => {
   const [url, setUrl] = useState("");
-  const [videoId, setVideoId] = useState("");
   const [loading, setLoading] = useState<boolean>(false);
-  const [segments, setSegments] = useState<ISegment[] | null>(null);
+  const [summary, setSummary] = useState<ISummary | null>(null);
   const playerRef = useRef<YouTube | null>(null);
 
   const handleParseVideo = async () => {
     setLoading(true);
     await parseVideo(url).then((data) => {
-      console.log("update segments", data.segments);
-      setSegments(data.segments);
-      setVideoId(data.videoId);
+      console.log("update segments", data);
+      setSummary(data);
       setLoading(false);
     });
   };
@@ -62,7 +60,7 @@ const App = () => {
         </Button>
       </Box>
       {/* Main Content */}
-      {segments?.length && (
+      {summary && (
         <Grid container spacing={2} sx={{ maxHeight: "100px" }}>
           <Grid item xs={8}>
             <YouTube
@@ -81,34 +79,81 @@ const App = () => {
                 console.log(e);
               }}
               ref={(ref) => (playerRef.current = ref)}
-              videoId={videoId}
+              videoId={summary.videoId}
             />
           </Grid>
 
           {/* Right Column */}
           <Grid item xs={4} sx={{ maxHeight: "480px" }}>
-            <Typography ml={1} variant="h4" component="h3">
-              Summary
-            </Typography>
+
             <Box sx={{ height: "100%", overflow: "scroll" }}>
-              {segments?.map((segment) => {
-                return (
-                  <Box sx={{ py: 1 }}>
-                    <Grid container spacing={2}>
-                      <Grid xs={4} item>
-                        <Button onClick={() => playerSkipTo(segment.timestamp)}>
-                          {formatTimestamp(segment.timestamp)}
-                        </Button>
+              <Typography variant="h4" component="h3">
+                Faces
+              </Typography>
+              <Box>
+                <Grid spacing={2} container>
+                  {summary?.faces.map((b64) => {
+                    return (
+                      <Grid xs={4} item><Box
+                        component="img"
+                        sx={{
+                          height: '100%',
+                        }}
+                        alt="The house from the offer."
+                        src={`data:image/jpg;base64, ${b64}`} /></Grid>
+                    )
+                  })}
+                </Grid>
+              </Box>
+              <Typography pt={2} variant="h4" component="h3">
+                Chapters
+              </Typography>
+              <Box>
+                {summary?.chapters.map((chapter) => {
+                  return (
+                    <Box sx={{ py: 1 }}>
+                      <Grid container spacing={2}>
+                        <Grid xs={4} item>
+                          <Button onClick={() => playerSkipTo(Math.floor(parseInt(chapter.timestamp) / 1000))}>
+                            {formatTimestamp(parseInt(chapter.timestamp) / 1000)}
+                          </Button>
+                        </Grid>
+                        <Grid xs={8} item>
+                          <Typography variant="body2" pt={1}>
+                            {chapter.text}
+                          </Typography>
+                        </Grid>
                       </Grid>
-                      <Grid xs={8} item>
-                        <Typography variant="body2" pt={1}>
-                          {segment.text}
-                        </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+              <Typography variant="h4" component="h3">
+                Transcript
+              </Typography>
+              <Box>
+                {summary?.transcript.map((segment) => {
+                  return (
+                    <Box sx={{ p: 1, borderBottom: '1px solid grey' }}>
+                      <Grid container spacing={2}>
+                        <Grid xs={4} item>
+                          <Typography variant="body2">
+                            {segment.speaker}
+                          </Typography>
+                          <Button sx={{ p: 0 }} onClick={() => playerSkipTo(Math.floor(segment.start_time / 1000))}>
+                            {formatTimestamp(segment.start_time / 1000)} - {formatTimestamp(segment.end_time / 1000)}
+                          </Button>
+                        </Grid>
+                        <Grid xs={8} item>
+                          <Typography variant="body2">
+                            {segment.text}
+                          </Typography>
+                        </Grid>
                       </Grid>
-                    </Grid>
-                  </Box>
-                );
-              })}
+                    </Box>
+                  );
+                })}
+              </Box>
             </Box>
           </Grid>
         </Grid>

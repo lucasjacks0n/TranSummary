@@ -1,10 +1,10 @@
 import axios from "axios";
-import { ISegment } from "../types/segment";
+import { ISummary } from "../types/segment";
 
 export const parseVideo = (
   url: string
-): Promise<{ videoId: string; segments: ISegment[] }> => {
+): Promise<ISummary> => {
   return axios
-    .post("http://localhost:4000/parse-video", { url })
+    .post(`http://100.106.216.46:4000/parse-video`, { url })
     .then((response) => response.data);
 };

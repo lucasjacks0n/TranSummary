@@ -114,7 +114,8 @@ class TranSummaryOld:
 
 from video_processor import FaceExtractor, VideoTranscriber
 import pickle
-from base64 import b64encode
+import base64
+from io import BytesIO
 
 class TranSummary:
     summary_model_name = "gpt-4"
@@ -137,8 +138,13 @@ class TranSummary:
     def get_faces_b64(self, data):
         res = []
         for face in data.values():
-            face_bytes = Image.fromarray(face[0]).tobytes()
-            res.append(b64encode(face_bytes))
+            img = Image.fromarray(face[0])
+            buffer = BytesIO()
+            img.save(buffer, format='JPEG')
+            img_bytes = buffer.getvalue()
+            img_base64 = base64.b64encode(img_bytes)
+            img_base64_str = img_base64.decode('utf-8')
+            res.append(img_base64_str)
         return res
 
     def get_transcript_str(self, data):
@@ -168,7 +174,8 @@ class TranSummary:
         
     def extract_data(self):
         cache_path = os.path.join(self.cache_dir, self.video_id + '.pkl')
-
+        os.makedirs(self.cache_dir, exist_ok=True)
+        
         if os.path.exists(cache_path):
             logger.info('From Cache')
             with open(cache_path, 'rb') as f:
