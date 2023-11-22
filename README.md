@@ -14,3 +14,4 @@ TranSummary is a web application designed to enhance the accessibility and compr
 - https://github.com/MahmoudAshraf97/whisper-diarization
 - https://github.com/cppxaxa/FaceRecognitionPipeline_GeeksForGeeks
 
+![screenshot](transummary.jpg)
