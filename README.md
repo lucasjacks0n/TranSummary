@@ -9,39 +9,8 @@ TranSummary is a web application designed to enhance the accessibility and compr
 - **Video Transcription**: Utilizes Whisper AI for precise transcription with timestamps.
 - **Content Summarization**: Implements OpenAI API to create concise, titled chapters for easy navigation and understanding of the video content.
 
-## Installation and Setup
-### Docker
-Known Issues
-- **Docker and M1 Chip Compatibility**: There is a known issue with Whisper timestamped transcription causing a SIGSEGV crash in Docker containers on the M1 chip. 
 
+## References
+- https://github.com/MahmoudAshraf97/whisper-diarization
+- https://github.com/cppxaxa/FaceRecognitionPipeline_GeeksForGeeks
 
-```shell
-docker-compose up
-```
-
-
-### Manual Setup
-#### Api
-```shell
-cd packages/api
-virtualenv -p python3 venv
-pip install -r requirements.txt
-```
-
-#### Frontend
-```shell
-cd packages/frontend
-npm install
-```
-
-
-## Start
-
-npm run api
-npm run frontend
-
-
-
-## TODO
-extract speakers and the faces from the video
-extract which speakers are speaking
